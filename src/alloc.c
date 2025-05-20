@@ -88,3 +88,120 @@ extern void __free(void *ptr) {
 
     return;
 }
+
+#if __STDC_VERSION__ >= 202000L
+#include <stdarg.h>
+
+extern void *__new(size_t len, ctor_t *__ctor, ...) {
+    void *__ptr = __malloc(len);
+    if (__ptr == NULL)
+        return NULL;
+
+    if (__ctor == NULL)
+        return __ptr;
+
+    va_list args;
+    va_start(args);
+    int rv = __ctor(__ptr, args);
+    va_end(args);
+
+    if (rv != 0)
+        __free(__ptr), __ptr = NULL;
+
+    return __ptr;
+}
+
+extern void __delete(void *__ptr, dtor_t *__dtor) {
+    void **ptr = __ptr;
+
+    if (ptr == NULL || *ptr == NULL)
+        return;
+
+    if (__dtor != NULL)
+        __dtor(*ptr);
+
+    __free(*ptr);
+
+    *ptr = NULL;
+
+    return;
+}
+#endif /* __STDC_VERSION__ */
+
+#ifdef EXAMPLE
+#include <stdio.h>
+#include <string.h>
+
+struct cell {
+    unsigned short address;
+    char *mode;
+    size_t len;
+    void *ptr;
+};
+
+static int cell_ctor(void *ptr, va_list args) {
+    struct cell *self = (struct cell *)ptr;
+    unsigned short address = va_arg(args, int);
+    const char *mode = va_arg(args, const char *);
+    size_t len = va_arg(args, size_t);
+
+    if (self == NULL || __len(self) != sizeof(struct cell) || !mode)
+        return -1;
+
+    self->mode = (char *)__malloc(strlen(mode) + 1);
+    if (self->mode == NULL)
+        return -1;
+
+    for (size_t i = 0; i < strlen(mode); i++) self->mode[i] = mode[i];
+    self->mode[strlen(mode)] = '\0';
+
+    self->address = address;
+    self->len = len;
+
+    self->ptr = __malloc(self->len);
+    if (self->ptr == NULL)
+        return -1;
+
+    return 0;
+}
+
+static void cell_dtor(void *ptr) {
+    struct cell *self = (struct cell *)ptr;
+
+    if (self == NULL)
+        return;
+
+    if (self->mode != NULL)
+        __free(self->mode);
+
+    if (self->ptr != NULL)
+        __free(self->ptr);
+
+    return;
+}
+
+extern int main(int, char *[]) {
+    unsigned short address = 0x80;
+    const char *mode = "rw";
+    size_t len = 80;
+
+    printf("Heap before __new: %zu\n", __memory);
+
+    struct cell *cell = (struct cell *)__new(sizeof(struct cell), cell_ctor, address, mode, len);
+    if (cell == NULL)
+        return -1;
+
+    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n", /* */
+           cell,                                                      /* */
+           cell->address,                                             /* */
+           cell->mode,                                                /* */
+           cell->len,                                                 /* */
+           __memory);
+
+    __delete(&cell, cell_dtor);
+
+    printf("Heap after __delete: %zu\n", __memory);
+
+    return 0;
+}
+#endif /* EXAMPLE */

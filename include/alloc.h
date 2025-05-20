@@ -47,4 +47,14 @@ extern void *__malloc(size_t);
 extern void *__realloc(void *, size_t);
 extern void __free(void *);
 
+#if __STDC_VERSION__ >= 202000L
+#include <stdarg.h>
+
+typedef int ctor_t(void *, va_list);
+typedef void dtor_t(void *);
+
+extern void *__new(size_t, ctor_t *, ...);
+extern void __delete(void *, dtor_t *);
+#endif /* __STDC_VERSION__ */
+
 #endif /* alloc_h */
