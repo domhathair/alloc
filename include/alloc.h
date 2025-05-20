@@ -32,7 +32,7 @@
 
 struct fat_pointer {
     size_t len;
-    unsigned char ptr;
+    unsigned char ptr[];
 };
 
 #ifndef MAX_HEAP

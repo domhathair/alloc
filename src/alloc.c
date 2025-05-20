@@ -41,9 +41,9 @@ extern void *__malloc(size_t len) {
         return NULL;
 
     __memory += __fat->len = len;
-    for (size_t i = 0; i < __fat->len; i++) (&__fat->ptr)[i] = 0;
+    for (size_t i = 0; i < __fat->len; i++) __fat->ptr[i] = 0;
 
-    return &__fat->ptr;
+    return __fat->ptr;
 }
 
 extern void *__realloc(void *ptr, size_t len) {
@@ -82,7 +82,7 @@ extern void __free(void *ptr) {
 
     __memory -= __fat->len;
     for (size_t i = 0; i < __fat->len; i++) /*  */
-        (&__fat->ptr)[i] = 0;
+        __fat->ptr[i] = 0;
 
     free(__fat);
 
