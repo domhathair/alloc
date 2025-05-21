@@ -25,8 +25,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef alloc_h
-#define alloc_h
+#ifndef ALLOC_H
+#define ALLOC_H
 
 #include <stddef.h>
 
@@ -57,4 +57,4 @@ extern void *__new(size_t, ctor_t *, ...);
 extern void __delete(void *, dtor_t *);
 #endif /* __STDC_VERSION__ */
 
-#endif /* alloc_h */
+#endif /* ALLOC_H */
