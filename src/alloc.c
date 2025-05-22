@@ -191,11 +191,11 @@ extern int main(int, char *[]) {
     if (cell == NULL)
         return -1;
 
-    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n", /* */
-           cell,                                                      /* */
-           cell->address,                                             /* */
-           cell->mode,                                                /* */
-           cell->len,                                                 /* */
+    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n", 
+           cell,                                                      
+           cell->address,                                             
+           cell->mode,                                                
+           cell->len,                                                 
            __memory);
 
     __delete(&cell, cell_dtor);
