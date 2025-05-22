@@ -37,7 +37,7 @@ struct fat_pointer {
 
 #ifndef MAX_HEAP
 /* 1 GiB by default */
-#define MAX_HEAP 1'073'741'824
+#define MAX_HEAP 1073741824
 #endif /* MAX_HEAP */
 
 extern size_t __memory;
