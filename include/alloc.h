@@ -30,6 +30,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct fat_pointer {
     size_t len;
     unsigned char ptr[];
@@ -46,6 +50,10 @@ extern size_t __len(void *);
 extern void *__malloc(size_t);
 extern void *__realloc(void *, size_t);
 extern void __free(void *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #if __STDC_VERSION__ >= 202000L
 #include <stdarg.h>
