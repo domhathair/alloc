@@ -4,11 +4,11 @@
 size_t __memory = 0;
 
 static struct fat_pointer *__get_ptr(void *ptr) {
-    if (ptr == NULL || (size_t)ptr < offsetof(struct fat_pointer, ptr))
+    if (!ptr || (size_t)ptr < offsetof(struct fat_pointer, ptr))
         return NULL;
 
     struct fat_pointer *__fat = (struct fat_pointer *)((size_t)ptr - offsetof(struct fat_pointer, ptr));
-    if (__fat == NULL)
+    if (!__fat)
         return NULL;
 
     return __fat;
@@ -16,7 +16,7 @@ static struct fat_pointer *__get_ptr(void *ptr) {
 
 static size_t *__len_ptr(void *ptr) {
     struct fat_pointer *__fat = __get_ptr(ptr);
-    if (__fat == NULL)
+    if (!__fat)
         return NULL;
 
     return &__fat->len;
@@ -24,7 +24,7 @@ static size_t *__len_ptr(void *ptr) {
 
 extern size_t __len(void *ptr) {
     size_t *len = __len_ptr(ptr);
-    if (len == NULL)
+    if (!len)
         return 0;
 
     return *len;
@@ -37,7 +37,7 @@ extern void *__malloc(size_t len) {
         return NULL;
 
     struct fat_pointer *__fat = (struct fat_pointer *)malloc(offsetof(struct fat_pointer, ptr) + len);
-    if (__fat == NULL)
+    if (!__fat)
         return NULL;
 
     __memory += __fat->len = len;
@@ -52,11 +52,11 @@ extern void *__realloc(void *ptr, size_t len) {
         return NULL;
     }
 
-    if (ptr == NULL)
+    if (!ptr)
         return __malloc(len);
 
     size_t *len_ptr = __len_ptr(ptr);
-    if (len_ptr == NULL)
+    if (!len_ptr)
         return ptr; /* Undefined behavior */
 
     if (len <= *len_ptr) {
@@ -65,7 +65,7 @@ extern void *__realloc(void *ptr, size_t len) {
     }
 
     void *ptr_new = __malloc(len);
-    if (ptr_new == NULL)
+    if (!ptr_new)
         return NULL;
 
     for (size_t i = 0; i < *len_ptr; i++) /*  */
@@ -77,7 +77,7 @@ extern void *__realloc(void *ptr, size_t len) {
 
 extern void __free(void *ptr) {
     struct fat_pointer *__fat = __get_ptr(ptr);
-    if (__fat == NULL)
+    if (!__fat)
         return;
 
     __memory -= __fat->len;
@@ -94,10 +94,10 @@ extern void __free(void *ptr) {
 
 extern void *__new(size_t len, ctor_t *__ctor, ...) {
     void *__ptr = __malloc(len);
-    if (__ptr == NULL)
+    if (!__ptr)
         return NULL;
 
-    if (__ctor == NULL)
+    if (!__ctor)
         return __ptr;
 
     va_list args;
@@ -114,10 +114,10 @@ extern void *__new(size_t len, ctor_t *__ctor, ...) {
 extern void __delete(void *__ptr, dtor_t *__dtor) {
     void **ptr = __ptr;
 
-    if (ptr == NULL || *ptr == NULL)
+    if (!ptr || !*ptr)
         return;
 
-    if (__dtor != NULL)
+    if (__dtor)
         __dtor(*ptr);
 
     __free(*ptr);
@@ -145,11 +145,11 @@ static int cell_ctor(void *ptr, va_list args) {
     const char *mode = va_arg(args, const char *);
     size_t len = va_arg(args, size_t);
 
-    if (self == NULL || __len(self) != sizeof(struct cell) || !mode)
+    if (!self || __len(self) != sizeof(struct cell) || !mode)
         return -1;
 
     self->mode = (char *)__malloc(strlen(mode) + 1);
-    if (self->mode == NULL)
+    if (!self->mode)
         return -1;
 
     for (size_t i = 0; i < strlen(mode); i++) self->mode[i] = mode[i];
@@ -159,7 +159,7 @@ static int cell_ctor(void *ptr, va_list args) {
     self->len = len;
 
     self->ptr = __malloc(self->len);
-    if (self->ptr == NULL)
+    if (!self->ptr)
         return -1;
 
     return 0;
@@ -168,13 +168,13 @@ static int cell_ctor(void *ptr, va_list args) {
 static void cell_dtor(void *ptr) {
     struct cell *self = (struct cell *)ptr;
 
-    if (self == NULL)
+    if (!self)
         return;
 
-    if (self->mode != NULL)
+    if (self->mode)
         __free(self->mode);
 
-    if (self->ptr != NULL)
+    if (self->ptr)
         __free(self->ptr);
 
     return;
@@ -188,7 +188,7 @@ extern int main(int, char *[]) {
     printf("Heap before __new: %zu\n", __memory);
 
     struct cell *cell = (struct cell *)__new(sizeof(struct cell), cell_ctor, address, mode, len);
-    if (cell == NULL)
+    if (!cell)
         return -1;
 
     printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n", 
