@@ -41,7 +41,8 @@ extern void *__malloc(size_t len) {
         return NULL;
 
     __memory += __fat->len = len;
-    for (size_t i = 0; i < __fat->len; i++) __fat->ptr[i] = 0;
+    for (size_t i = 0; i < __fat->len; i++)
+        __fat->ptr[i] = 0;
 
     return __fat->ptr;
 }
@@ -57,8 +58,7 @@ extern void *__realloc(void *ptr, size_t len) {
 
     size_t *len_ptr = __len_ptr(ptr);
     if (!len_ptr)
-        return ptr; /* Undefined behavior */
-
+        return NULL; /* Invalid fat pointer */
     if (len <= *len_ptr) {
         *len_ptr = len;
         return ptr;
@@ -68,7 +68,7 @@ extern void *__realloc(void *ptr, size_t len) {
     if (!ptr_new)
         return NULL;
 
-    for (size_t i = 0; i < *len_ptr; i++) /*  */
+    for (size_t i = 0; i < *len_ptr; i++)
         ((unsigned char *)ptr_new)[i] = ((unsigned char *)ptr)[i];
     __free(ptr);
 
@@ -152,7 +152,8 @@ static int cell_ctor(void *ptr, va_list args) {
     if (!self->mode)
         return -1;
 
-    for (size_t i = 0; i < strlen(mode); i++) self->mode[i] = mode[i];
+    for (size_t i = 0; i < strlen(mode); i++)
+        self->mode[i] = mode[i];
     self->mode[strlen(mode)] = '\0';
 
     self->address = address;
@@ -191,11 +192,11 @@ extern int main(int, char *[]) {
     if (!cell)
         return -1;
 
-    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n", 
-           cell,                                                      
-           cell->address,                                             
-           cell->mode,                                                
-           cell->len,                                                 
+    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n",
+           cell,
+           cell->address,
+           cell->mode,
+           cell->len,
            __memory);
 
     __delete(&cell, cell_dtor);
