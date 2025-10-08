@@ -44,12 +44,12 @@ struct fat_pointer {
 #define MAX_HEAP 1073741824
 #endif /* MAX_HEAP */
 
-extern size_t __memory;
+extern size_t _Allocated_memory;
 
-extern size_t __len(void *);
-extern void *__malloc(size_t);
-extern void *__realloc(void *, size_t);
-extern void __free(void *);
+extern size_t fat_len(void *);
+extern void *fat_malloc(size_t);
+extern void *fat_realloc(void *, size_t);
+extern void fat_free(void *);
 
 #ifdef __cplusplus
 }
@@ -61,8 +61,8 @@ extern void __free(void *);
 typedef int ctor_t(void *, va_list);
 typedef void dtor_t(void *);
 
-extern void *__new(size_t, ctor_t *, ...);
-extern void __delete(void *, dtor_t *);
+extern void *_New(size_t, ctor_t *, ...);
+extern void _Delete(void **, dtor_t *);
 #endif /* __STDC_VERSION__ */
 
 #endif /* ALLOC_H */

@@ -1,28 +1,49 @@
+/**
+ * @file alloc.c
+ * @brief Implementation of a simple "fat" allocator
+ *
+ * IMPORTANT NOTES:
+ * - The pointer returned by fat_malloc/fat_realloc points to the payload (ptr),
+ *   not to the start of the header. Use fat_free to free such pointers
+ * - The implementation is NOT thread-safe. External synchronization is required
+ *   if used concurrently
+ * - The functions make minimal checks for pointer validity. Passing arbitrary
+ *   pointers to internal helpers yields undefined behavior
+ */
+
 #include "alloc.h"
+#include <stdint.h>
 #include <stdlib.h>
 
-size_t __memory = 0;
+/**
+ * @brief Global counter of total allocated bytes (sum of all live allocations)
+ *
+ * @see fat_malloc, fat_free
+ */
+size_t _Allocated_memory = 0;
 
 static struct fat_pointer *__get_ptr(void *ptr) {
-    if (!ptr || (size_t)ptr < offsetof(struct fat_pointer, ptr))
+    if (!ptr)
         return NULL;
 
-    struct fat_pointer *__fat = (struct fat_pointer *)((size_t)ptr - offsetof(struct fat_pointer, ptr));
-    if (!__fat)
-        return NULL;
-
-    return __fat;
+    return (struct fat_pointer *)((uintptr_t)ptr - offsetof(struct fat_pointer, ptr));
 }
 
 static size_t *__len_ptr(void *ptr) {
-    struct fat_pointer *__fat = __get_ptr(ptr);
-    if (!__fat)
+    struct fat_pointer *_Fat = __get_ptr(ptr);
+    if (!_Fat)
         return NULL;
 
-    return &__fat->len;
+    return &_Fat->len;
 }
 
-extern size_t __len(void *ptr) {
+/**
+ * @brief Return the length (in bytes) of the allocation associated with ptr
+ *
+ * @param ptr Pointer to payload (may be NULL)
+ * @return Size in bytes of the allocation. Returns 0 if ptr is NULL or invalid
+ */
+extern size_t fat_len(void *ptr) {
     size_t *len = __len_ptr(ptr);
     if (!len)
         return 0;
@@ -30,61 +51,105 @@ extern size_t __len(void *ptr) {
     return *len;
 }
 
-extern void *__malloc(size_t len) {
-    if (len == 0)
-        return NULL;
-    else if (__memory + len > MAX_HEAP)
+/**
+ * @brief Allocate a block of memory of requested payload size and return payload pointer
+ *
+ * @param len Requested payload size in bytes
+ * @return Pointer to payload on success; NULL on failure
+ *
+ * @post On success, _Allocated_memory is increased by len and the returned payload is zeroed
+ * @warning The pointer returned must be freed with fat_free, not free()
+ * @see fat_free, fat_realloc, fat_len
+ */
+extern void *fat_malloc(size_t len) {
+    if (len == 0 || len > MAX_HEAP || _Allocated_memory > MAX_HEAP - len)
         return NULL;
 
-    struct fat_pointer *__fat = (struct fat_pointer *)malloc(offsetof(struct fat_pointer, ptr) + len);
-    if (!__fat)
+    size_t header = offsetof(struct fat_pointer, ptr);
+    if (len > SIZE_MAX - header)
         return NULL;
 
-    __memory += __fat->len = len;
-    for (size_t i = 0; i < __fat->len; i++)
-        __fat->ptr[i] = 0;
+    struct fat_pointer *_Fat = (struct fat_pointer *)calloc(header + len, sizeof(unsigned char));
+    if (!_Fat)
+        return NULL;
 
-    return __fat->ptr;
+    _Allocated_memory += _Fat->len = len;
+
+    return _Fat->ptr;
 }
 
-extern void *__realloc(void *ptr, size_t len) {
+/**
+ * @brief Reallocate a payload to a new size (similar to realloc semantics inside this API)
+ *
+ * @param ptr Pointer to payload previously returned by fat_malloc/fat_realloc (or NULL)
+ * @param len New requested payload size
+ * @return Pointer to payload (possibly moved) on success; NULL on failure or when len == 0
+ *
+ * @note Copy is performed byte-wise via unsigned char semantics
+ * @warning Not thread-safe. If ptr is not a valid fat pointer, behavior is undefined
+ * @see fat_malloc, fat_free
+ */
+extern void *fat_realloc(void *ptr, size_t len) {
     if (len == 0) {
-        __free(ptr);
+        fat_free(ptr);
         return NULL;
     }
 
     if (!ptr)
-        return __malloc(len);
+        return fat_malloc(len);
 
-    size_t *len_ptr = __len_ptr(ptr);
-    if (!len_ptr)
+    struct fat_pointer *_Fat = __get_ptr(ptr);
+    if (!_Fat)
         return NULL; /* Invalid fat pointer */
-    if (len <= *len_ptr) {
-        *len_ptr = len;
+
+    if (len == _Fat->len)
+        return ptr;
+    else if (len < _Fat->len) {
+        for (size_t i = len; i < _Fat->len; i++)
+            _Fat->ptr[i] = 0;
+
+        size_t diff = _Fat->len - len;
+        if (_Allocated_memory <= diff)
+            /* Something is wrong with _Fat->len */
+            return NULL;
+        _Allocated_memory -= diff;
+        _Fat->len = len;
+
         return ptr;
     }
 
-    void *ptr_new = __malloc(len);
+    void *ptr_new = fat_malloc(len);
     if (!ptr_new)
         return NULL;
 
-    for (size_t i = 0; i < *len_ptr; i++)
+    for (size_t i = 0; i < _Fat->len; i++)
         ((unsigned char *)ptr_new)[i] = ((unsigned char *)ptr)[i];
-    __free(ptr);
+    fat_free(ptr);
 
     return ptr_new;
 }
 
-extern void __free(void *ptr) {
-    struct fat_pointer *__fat = __get_ptr(ptr);
-    if (!__fat)
+/**
+ * @brief Free a payload previously returned by fat_malloc/fat_realloc
+ *
+ * @param ptr Pointer to payload to free. If ptr is NULL, function does nothing
+ * @return void
+ *
+ * @post _Allocated_memory is decreased by the allocation's stored length
+ * @warning If ptr is not a valid fat allocation pointer, behavior is undefined; the function
+ *          attempts minimal protection by returning on NULL input
+ * @see fat_malloc, fat_realloc
+ */
+extern void fat_free(void *ptr) {
+    struct fat_pointer *_Fat = __get_ptr(ptr);
+    if (!_Fat)
         return;
 
-    __memory -= __fat->len;
-    for (size_t i = 0; i < __fat->len; i++) /*  */
-        __fat->ptr[i] = 0;
+    _Allocated_memory = (_Allocated_memory >= _Fat->len) ? _Allocated_memory - _Fat->len : 0;
+    for (size_t i = 0; i < _Fat->len; i++) /*  */
+        _Fat->ptr[i] = 0;
 
-    free(__fat);
+    free(_Fat);
 
     return;
 }
@@ -92,8 +157,20 @@ extern void __free(void *ptr) {
 #if __STDC_VERSION__ >= 202000L
 #include <stdarg.h>
 
-extern void *__new(size_t len, ctor_t *__ctor, ...) {
-    void *__ptr = __malloc(len);
+/**
+ * @brief Allocate raw storage for an object and run a constructor (variadic)
+ *
+ * @param len Payload size in bytes to allocate.
+ * @param __ctor Constructor function or NULL. If NULL, the allocated block is returned
+ *               without calling any constructor
+ * @param ... Arguments forwarded to the constructor via va_list
+ * @return Pointer to allocated payload on success, or NULL on failure or if ctor returns non-zero
+ *
+ * @note Only available when __STDC_VERSION__ >= 202000L (C2x or newer).
+ * @see _Delete
+ */
+extern void *_New(size_t len, ctor_t *__ctor, ...) {
+    void *__ptr = fat_malloc(len);
     if (!__ptr)
         return NULL;
 
@@ -106,103 +183,34 @@ extern void *__new(size_t len, ctor_t *__ctor, ...) {
     va_end(args);
 
     if (rv != 0)
-        __free(__ptr), __ptr = NULL;
+        fat_free(__ptr), __ptr = NULL;
 
     return __ptr;
 }
 
-extern void __delete(void *__ptr, dtor_t *__dtor) {
-    void **ptr = __ptr;
-
-    if (!ptr || !*ptr)
+/**
+ * @brief Call destructor and free an object. The caller must pass the address of the pointer
+ *
+ * @param __ptr Address of the payload pointer (i.e. pointer-to-pointer, void **).
+ *              After return, *(__ptr) is set to NULL
+ * @param __dtor Destructor function to call on the payload prior to freeing. May be NULL
+ * @return void
+ *
+ * @warning The function expects an address-of-pointer. Passing a raw payload pointer instead
+ *          (not its address) leads to undefined behavior
+ * @see _New
+ */
+extern void _Delete(void **__ptr, dtor_t *__dtor) {
+    if (!__ptr || !*__ptr)
         return;
 
     if (__dtor)
-        __dtor(*ptr);
+        __dtor(*__ptr);
 
-    __free(*ptr);
+    fat_free(*__ptr);
 
-    *ptr = NULL;
+    *__ptr = NULL;
 
     return;
 }
 #endif /* __STDC_VERSION__ */
-
-#ifdef EXAMPLE
-#include <stdio.h>
-#include <string.h>
-
-struct cell {
-    unsigned short address;
-    char *mode;
-    size_t len;
-    void *ptr;
-};
-
-static int cell_ctor(void *ptr, va_list args) {
-    struct cell *self = (struct cell *)ptr;
-    unsigned short address = va_arg(args, int);
-    const char *mode = va_arg(args, const char *);
-    size_t len = va_arg(args, size_t);
-
-    if (!self || __len(self) != sizeof(struct cell) || !mode)
-        return -1;
-
-    self->mode = (char *)__malloc(strlen(mode) + 1);
-    if (!self->mode)
-        return -1;
-
-    for (size_t i = 0; i < strlen(mode); i++)
-        self->mode[i] = mode[i];
-    self->mode[strlen(mode)] = '\0';
-
-    self->address = address;
-    self->len = len;
-
-    self->ptr = __malloc(self->len);
-    if (!self->ptr)
-        return -1;
-
-    return 0;
-}
-
-static void cell_dtor(void *ptr) {
-    struct cell *self = (struct cell *)ptr;
-
-    if (!self)
-        return;
-
-    if (self->mode)
-        __free(self->mode);
-
-    if (self->ptr)
-        __free(self->ptr);
-
-    return;
-}
-
-extern int main(int, char *[]) {
-    unsigned short address = 0x80;
-    const char *mode = "rw";
-    size_t len = 80;
-
-    printf("Heap before __new: %zu\n", __memory);
-
-    struct cell *cell = (struct cell *)__new(sizeof(struct cell), cell_ctor, address, mode, len);
-    if (!cell)
-        return -1;
-
-    printf("Cell: %p, address: %hu, mode: %s, len: %zu, heap: %zu\n",
-           cell,
-           cell->address,
-           cell->mode,
-           cell->len,
-           __memory);
-
-    __delete(&cell, cell_dtor);
-
-    printf("Heap after __delete: %zu\n", __memory);
-
-    return 0;
-}
-#endif /* EXAMPLE */
