@@ -61,7 +61,11 @@ extern void fat_free(void *);
 typedef int ctor_t(void *, va_list);
 typedef void dtor_t(void *);
 
-extern void *_New(size_t, ctor_t *, ...);
+extern void *_New(size_t, ctor_t *,
+#ifdef _WIN32
+                  size_t,
+#endif /* _WIN32 */
+                  ...);
 extern void _Delete(void **, dtor_t *);
 #endif /* __STDC_VERSION__ */
 

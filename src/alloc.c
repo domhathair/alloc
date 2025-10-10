@@ -169,7 +169,11 @@ extern void fat_free(void *ptr) {
  * @note Only available when __STDC_VERSION__ >= 202000L (C2x or newer).
  * @see _Delete
  */
-extern void *_New(size_t len, ctor_t *__ctor, ...) {
+extern void *_New(size_t len, ctor_t *__ctor,
+#ifdef _WIN32
+                  size_t n_memb,
+#endif
+                  ...) {
     void *__ptr = fat_malloc(len);
     if (!__ptr)
         return NULL;
@@ -178,7 +182,11 @@ extern void *_New(size_t len, ctor_t *__ctor, ...) {
         return __ptr;
 
     va_list args;
+#ifdef _WIN32
+    va_start(args, n_memb);
+#else
     va_start(args);
+#endif
     int rv = __ctor(__ptr, args);
     va_end(args);
 
